@@ -1,0 +1,13 @@
+E:/HMI_SerialDashboard/build/CMakeFiles/HMI_SerialDashboard.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/HMI_SerialDashboard_lupdate.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/update_translations.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/HMI_SerialDashboard_lrelease.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/release_translations.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/edit_cache.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/rebuild_cache.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/list_install_components.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/install.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/install/local.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/install/strip.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/HMI_SerialDashboard_autogen_timestamp_deps.dir
+E:/HMI_SerialDashboard/build/CMakeFiles/HMI_SerialDashboard_autogen.dir

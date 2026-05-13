@@ -1,0 +1,115 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-65c75d3c27d093093d94.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "HMI_SerialDashboard",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "HMI_SerialDashboard::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HMI_SerialDashboard-Debug-7af9e06e41916bc8c8ca.json",
+					"name" : "HMI_SerialDashboard",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "HMI_SerialDashboard_autogen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HMI_SerialDashboard_autogen-Debug-efe4b6708e5807edf88b.json",
+					"name" : "HMI_SerialDashboard_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "HMI_SerialDashboard_autogen_timestamp_deps::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HMI_SerialDashboard_autogen_timestamp_deps-Debug-047f70c1439255269867.json",
+					"name" : "HMI_SerialDashboard_autogen_timestamp_deps",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "HMI_SerialDashboard_lrelease::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HMI_SerialDashboard_lrelease-Debug-af08e23312c0cb7bf3e8.json",
+					"name" : "HMI_SerialDashboard_lrelease",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "HMI_SerialDashboard_lupdate::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HMI_SerialDashboard_lupdate-Debug-ff947102b3ebe8d113a8.json",
+					"name" : "HMI_SerialDashboard_lupdate",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "release_translations::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-release_translations-Debug-c2574f6cb7201736d0af.json",
+					"name" : "release_translations",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "update_translations::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-update_translations-Debug-59bd9095da8191a37ad0.json",
+					"name" : "update_translations",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "E:/HMI_SerialDashboard/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug",
+		"source" : "E:/HMI_SerialDashboard"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 7
+	}
+}

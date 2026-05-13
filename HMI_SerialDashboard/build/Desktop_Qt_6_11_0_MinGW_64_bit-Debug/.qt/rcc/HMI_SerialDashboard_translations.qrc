@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/i18n">
+    <file alias="HMI_SerialDashboard_zh_CN.qm">E:/HMI_SerialDashboard/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug/HMI_SerialDashboard_zh_CN.qm</file>
+  </qresource>
+</RCC>
+
