@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/i18n">
-    <file alias="HMI_SerialDashboard_zh_CN.qm">E:/HMI_SerialDashboard/build/Release/HMI_SerialDashboard_zh_CN.qm</file>
-  </qresource>
-</RCC>
-

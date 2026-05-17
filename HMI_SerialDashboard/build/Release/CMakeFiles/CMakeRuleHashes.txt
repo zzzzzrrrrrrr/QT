@@ -1,5 +1,0 @@
-# Hashes of file build rules.
-864bd1bbe9f86ac4ddc393d3c645df6a .qt/rcc/qrc_HMI_SerialDashboard_translations.cpp
-6b506aea3474ae3de6286b23a59893ca CMakeFiles/HMI_SerialDashboard_lrelease
-4b947c5fb0633c516a3f1e909c2240d7 CMakeFiles/HMI_SerialDashboard_lupdate
-ff6eaf92d81ee7a520424a2bc858fce4 HMI_SerialDashboard_zh_CN.qm
