@@ -10,6 +10,7 @@ find_package(Qt6 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt6 COMPONENTS Network Xml LinguistTools REQUIRED)
 find_package(Qt6 COMPONENTS Charts QUIET)
 find_package(Qt6 COMPONENTS SerialPort QUIET)
+find_package(Qt6 COMPONENTS SerialBus QUIET)
 
 qt_standard_project_setup()
 
@@ -86,6 +87,13 @@ else()
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALPORT=0)
 endif()
 
+if(Qt6SerialBus_FOUND)
+    list(APPEND PROJECT_LIBRARIES Qt6::SerialBus)
+    target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALBUS=1)
+else()
+    target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALBUS=0)
+endif()
+
 if(Qt6Charts_FOUND)
     list(APPEND PROJECT_LIBRARIES Qt6::Charts)
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_CHARTS=1)
@@ -97,6 +105,50 @@ target_link_libraries(HMI_SerialDashboard
     PRIVATE
         ${PROJECT_LIBRARIES}
 )
+
+enable_testing()
+
+add_executable(hmi_unit_tests
+    tests/hmi_unit_tests.cpp
+    alarmmanager.cpp
+    alarmmanager.h
+    configmanager.cpp
+    configmanager.h
+    datalogger.cpp
+    datalogger.h
+    dataprocessor.cpp
+    dataprocessor.h
+)
+
+set_target_properties(hmi_unit_tests PROPERTIES
+    AUTOUIC OFF
+)
+
+if(HMI_USE_MANUAL_AUTOGEN)
+    target_sources(hmi_unit_tests
+        PRIVATE
+            "${MANUAL_AUTOGEN_DIR}/moc/moc_alarmmanager.cpp"
+            "${MANUAL_AUTOGEN_DIR}/moc/moc_configmanager.cpp"
+            "${MANUAL_AUTOGEN_DIR}/moc/moc_datalogger.cpp"
+            "${MANUAL_AUTOGEN_DIR}/moc/moc_dataprocessor.cpp"
+    )
+    set_target_properties(hmi_unit_tests PROPERTIES AUTOMOC OFF)
+else()
+    set_target_properties(hmi_unit_tests PROPERTIES AUTOMOC ON)
+endif()
+
+target_link_libraries(hmi_unit_tests
+    PRIVATE
+        Qt6::Core
+        Qt6::Xml
+)
+
+target_include_directories(hmi_unit_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_test(NAME hmi_unit_tests COMMAND hmi_unit_tests)
 
 install(TARGETS HMI_SerialDashboard
     BUNDLE  DESTINATION .

@@ -63,6 +63,55 @@ AlarmManager::AlarmState AlarmManager::currentState() const
     return m_currentState;
 }
 
+QVector<AlarmManager::AlarmRecord> AlarmManager::history() const
+{
+    return m_history;
+}
+
+bool AlarmManager::isSilenced() const
+{
+    return m_silenced;
+}
+
+void AlarmManager::acknowledgeCurrentAlarm()
+{
+    if (!m_currentState.active || m_currentState.acknowledged) {
+        return;
+    }
+
+    m_currentState.acknowledged = true;
+    appendHistoryRecord(m_currentState);
+    emit alarmAcknowledged(m_currentState.message);
+    emit alarmHistoryChanged();
+}
+
+void AlarmManager::setSilenced(bool silenced)
+{
+    if (m_silenced == silenced) {
+        return;
+    }
+
+    m_silenced = silenced;
+    m_currentState.silenced = m_currentState.active && m_silenced;
+
+    if (m_currentState.active) {
+        appendHistoryRecord(m_currentState);
+    }
+
+    emit alarmSilenced(m_silenced);
+    emit alarmHistoryChanged();
+}
+
+void AlarmManager::clearHistory()
+{
+    if (m_history.isEmpty()) {
+        return;
+    }
+
+    m_history.clear();
+    emit alarmHistoryChanged();
+}
+
 AlarmManager::AlarmState AlarmManager::makeNormalState() const
 {
     AlarmState state;
@@ -89,12 +138,44 @@ AlarmManager::AlarmState AlarmManager::makeHighState(const QString &channel,
 
 void AlarmManager::updateCurrentState(const AlarmState &state)
 {
-    const bool changed = state.active != m_currentState.active
-                         || state.message != m_currentState.message;
+    AlarmState nextState = state;
+    const bool sameActiveAlarm = nextState.active
+                                 && m_currentState.active
+                                 && nextState.message == m_currentState.message;
 
-    m_currentState = state;
+    if (!nextState.active) {
+        m_silenced = false;
+        nextState.silenced = false;
+        nextState.acknowledged = false;
+    } else {
+        nextState.silenced = m_silenced;
+        nextState.acknowledged = sameActiveAlarm ? m_currentState.acknowledged : false;
+    }
+
+    const bool changed = nextState.active != m_currentState.active
+                         || nextState.message != m_currentState.message;
+
+    m_currentState = nextState;
 
     if (changed) {
+        appendHistoryRecord(m_currentState);
         emit alarmStateChanged(m_currentState.active, m_currentState.message);
+        emit alarmHistoryChanged();
+    }
+}
+
+void AlarmManager::appendHistoryRecord(const AlarmState &state)
+{
+    AlarmRecord record;
+    record.timestamp = QDateTime::currentDateTime();
+    record.active = state.active;
+    record.acknowledged = state.acknowledged;
+    record.silenced = state.silenced;
+    record.message = state.message;
+
+    m_history.append(record);
+
+    while (m_history.size() > m_maxHistoryRecords) {
+        m_history.removeFirst();
     }
 }

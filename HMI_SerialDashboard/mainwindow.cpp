@@ -15,6 +15,7 @@
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QTableView>
 #include <QVBoxLayout>
@@ -88,6 +89,25 @@ void MainWindow::handleSettingsClicked()
     openSettingsDialog();
 }
 
+void MainWindow::handleAlarmAcknowledgeClicked()
+{
+    m_alarmManager.acknowledgeCurrentAlarm();
+    updateAlarmUi(m_alarmManager.currentState());
+}
+
+void MainWindow::handleAlarmSilenceClicked()
+{
+    m_alarmManager.setSilenced(!m_alarmManager.isSilenced());
+    updateAlarmUi(m_alarmManager.currentState());
+}
+
+void MainWindow::handleAvailableSerialPortsChanged(const QStringList &ports)
+{
+    appendLogMessage(ports.isEmpty()
+                         ? tr("Serial ports changed: none available")
+                         : tr("Serial ports changed: %1").arg(ports.join(QStringLiteral(", "))));
+}
+
 void MainWindow::handleProcessedData(const QVector<double> &values)
 {
     const QString valuesText = formatValues(values);
@@ -123,6 +143,7 @@ void MainWindow::initializeModules()
     updateHeaderState(tr("Idle"));
     updateValueCards({});
     updateAlarmUi(m_alarmManager.currentState());
+    refreshAlarmHistoryTable();
 }
 
 void MainWindow::connectSignals()
@@ -133,11 +154,17 @@ void MainWindow::connectSignals()
             this, &MainWindow::handleStopClicked);
     connect(ui->settingsButton, &QPushButton::clicked,
             this, &MainWindow::handleSettingsClicked);
+    connect(m_alarmAckButton, &QPushButton::clicked,
+            this, &MainWindow::handleAlarmAcknowledgeClicked);
+    connect(m_alarmSilenceButton, &QPushButton::clicked,
+            this, &MainWindow::handleAlarmSilenceClicked);
 
     connect(&m_serialManager, &SerialManager::dataReceived,
             &m_dataProcessor, &DataProcessor::processRawData);
     connect(&m_serialManager, &SerialManager::errorOccurred,
             this, &MainWindow::handleStatusMessage);
+    connect(&m_serialManager, &SerialManager::availableSerialPortsChanged,
+            this, &MainWindow::handleAvailableSerialPortsChanged);
     connect(&m_dataProcessor, &DataProcessor::dataUpdated,
             &m_workerThread, &WorkerThread::setLatestData);
     connect(&m_workerThread, &WorkerThread::dataProcessed,
@@ -147,6 +174,18 @@ void MainWindow::connectSignals()
                 appendLogMessage(active ? tr("Alarm active: %1").arg(message)
                                         : tr("Alarm cleared"));
             });
+    connect(&m_alarmManager, &AlarmManager::alarmAcknowledged,
+            this, [this](const QString &message) {
+                appendLogMessage(tr("Alarm acknowledged: %1").arg(message));
+                refreshAlarmHistoryTable();
+            });
+    connect(&m_alarmManager, &AlarmManager::alarmSilenced,
+            this, [this](bool silenced) {
+                appendLogMessage(silenced ? tr("Alarm silenced")
+                                          : tr("Alarm sound enabled"));
+            });
+    connect(&m_alarmManager, &AlarmManager::alarmHistoryChanged,
+            this, &MainWindow::refreshAlarmHistoryTable);
     connect(&m_dataLogger, &DataLogger::logMessage,
             this, &MainWindow::appendLogMessage);
     connect(&m_dataLogger, &DataLogger::errorOccurred,
@@ -158,8 +197,19 @@ void MainWindow::ensureDefaultConfiguration()
     setDefaultValue(QStringLiteral("io.mode"), QStringLiteral("tcp-sim"));
     setDefaultValue(QStringLiteral("serial.portName"), QStringLiteral("COM1"));
     setDefaultValue(QStringLiteral("serial.baudRate"), 9600);
+    setDefaultValue(QStringLiteral("serial.autoReconnect"), true);
+    setDefaultValue(QStringLiteral("serial.reconnectIntervalMs"), 1000);
     setDefaultValue(QStringLiteral("tcp.host"), QStringLiteral("127.0.0.1"));
     setDefaultValue(QStringLiteral("tcp.port"), 502);
+    setDefaultValue(QStringLiteral("modbus.tcp.host"), QStringLiteral("127.0.0.1"));
+    setDefaultValue(QStringLiteral("modbus.tcp.port"), 502);
+    setDefaultValue(QStringLiteral("modbus.rtu.portName"), QStringLiteral("COM1"));
+    setDefaultValue(QStringLiteral("modbus.rtu.baudRate"), 9600);
+    setDefaultValue(QStringLiteral("modbus.unitId"), 1);
+    setDefaultValue(QStringLiteral("modbus.startAddress"), 0);
+    setDefaultValue(QStringLiteral("modbus.registerCount"), 3);
+    setDefaultValue(QStringLiteral("modbus.pollIntervalMs"), 500);
+    setDefaultValue(QStringLiteral("modbus.timeoutMs"), 1000);
     setDefaultValue(QStringLiteral("simulation.intervalMs"), 250);
     setDefaultValue(QStringLiteral("worker.intervalMs"), 200);
     setDefaultValue(QStringLiteral("alarm.temperatureHigh"), 32.0);
@@ -195,11 +245,32 @@ void MainWindow::applyConfiguration()
         m_configManager.getValue(QStringLiteral("serial.portName"), QMetaType::QString).toString());
     m_serialManager.setBaudRate(
         m_configManager.getValue(QStringLiteral("serial.baudRate"), QMetaType::Int).toInt());
+    m_serialManager.setSerialAutoReconnectEnabled(
+        m_configManager.getValue(QStringLiteral("serial.autoReconnect"), QMetaType::Bool).toBool());
+    m_serialManager.setSerialReconnectIntervalMs(
+        m_configManager.getValue(QStringLiteral("serial.reconnectIntervalMs"), QMetaType::Int).toInt());
     m_serialManager.setTcpEndpoint(
         m_configManager.getValue(QStringLiteral("tcp.host"), QMetaType::QString).toString(),
         static_cast<quint16>(m_configManager.getValue(QStringLiteral("tcp.port"), QMetaType::Int).toUInt()));
     m_serialManager.setSimulationIntervalMs(
         m_configManager.getValue(QStringLiteral("simulation.intervalMs"), QMetaType::Int).toInt());
+    m_serialManager.setModbusTcpEndpoint(
+        m_configManager.getValue(QStringLiteral("modbus.tcp.host"), QMetaType::QString).toString(),
+        static_cast<quint16>(m_configManager.getValue(QStringLiteral("modbus.tcp.port"),
+                                                      QMetaType::Int).toUInt()));
+    m_serialManager.setModbusSerialPortName(
+        m_configManager.getValue(QStringLiteral("modbus.rtu.portName"), QMetaType::QString).toString());
+    m_serialManager.setModbusBaudRate(
+        m_configManager.getValue(QStringLiteral("modbus.rtu.baudRate"), QMetaType::Int).toInt());
+    m_serialManager.setModbusUnitId(
+        m_configManager.getValue(QStringLiteral("modbus.unitId"), QMetaType::Int).toInt());
+    m_serialManager.setModbusRegisterRange(
+        m_configManager.getValue(QStringLiteral("modbus.startAddress"), QMetaType::Int).toInt(),
+        m_configManager.getValue(QStringLiteral("modbus.registerCount"), QMetaType::Int).toInt());
+    m_serialManager.setModbusPollIntervalMs(
+        m_configManager.getValue(QStringLiteral("modbus.pollIntervalMs"), QMetaType::Int).toInt());
+    m_serialManager.setModbusTimeoutMs(
+        m_configManager.getValue(QStringLiteral("modbus.timeoutMs"), QMetaType::Int).toInt());
 
     m_workerThread.setProcessor(&m_dataProcessor);
     m_workerThread.setIntervalMs(
@@ -244,6 +315,27 @@ void MainWindow::configureInputSource()
         return;
     }
 
+    if (mode == QStringLiteral("tcp")) {
+        m_serialManager.setConnectionType(SerialManager::ConnectionType::TcpSocket);
+        m_serialManager.setTcpSimulationEnabled(false);
+        ui->modeValueLabel->setText(tr("TCP"));
+        return;
+    }
+
+    if (mode == QStringLiteral("modbus-tcp")) {
+        m_serialManager.setTcpSimulationEnabled(false);
+        m_serialManager.setConnectionType(SerialManager::ConnectionType::ModbusTcp);
+        ui->modeValueLabel->setText(tr("Modbus TCP"));
+        return;
+    }
+
+    if (mode == QStringLiteral("modbus-rtu")) {
+        m_serialManager.setTcpSimulationEnabled(false);
+        m_serialManager.setConnectionType(SerialManager::ConnectionType::ModbusRtu);
+        ui->modeValueLabel->setText(tr("Modbus RTU"));
+        return;
+    }
+
     m_serialManager.setConnectionType(SerialManager::ConnectionType::TcpSocket);
     m_serialManager.setTcpSimulationEnabled(true);
     ui->modeValueLabel->setText(tr("TCP Sim"));
@@ -253,7 +345,7 @@ void MainWindow::openSettingsDialog()
 {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("HMI Settings"));
-    dialog.resize(480, 520);
+    dialog.resize(560, 720);
 
     auto *dialogLayout = new QVBoxLayout(&dialog);
 
@@ -263,16 +355,52 @@ void MainWindow::openSettingsDialog()
     modeCombo->addItem(tr("TCP Simulation"), QStringLiteral("tcp-sim"));
     modeCombo->addItem(tr("TCP Socket"), QStringLiteral("tcp"));
     modeCombo->addItem(tr("Serial Port"), QStringLiteral("serial"));
+    modeCombo->addItem(tr("Modbus TCP"), QStringLiteral("modbus-tcp"));
+    modeCombo->addItem(tr("Modbus RTU"), QStringLiteral("modbus-rtu"));
     modeCombo->setCurrentIndex(qMax(0, modeCombo->findData(
                                         m_configManager.getValue(QStringLiteral("io.mode"),
                                                                  QMetaType::QString).toString())));
 
-    auto *serialPortEdit = new QLineEdit(
-        m_configManager.getValue(QStringLiteral("serial.portName"), QMetaType::QString).toString(),
-        sourceGroup);
+    auto *serialPortCombo = new QComboBox(sourceGroup);
+    serialPortCombo->setEditable(true);
+    const QString configuredSerialPort =
+        m_configManager.getValue(QStringLiteral("serial.portName"), QMetaType::QString).toString();
+    const auto reloadSerialPorts = [this, serialPortCombo, configuredSerialPort]() {
+        const QString currentText = serialPortCombo->currentText().trimmed().isEmpty()
+                                        ? configuredSerialPort
+                                        : serialPortCombo->currentText().trimmed();
+        serialPortCombo->clear();
+        const QStringList ports = m_serialManager.availableSerialPorts();
+        serialPortCombo->addItems(ports);
+        if (!ports.contains(QStringLiteral("AUTO"))) {
+            serialPortCombo->insertItem(0, QStringLiteral("AUTO"));
+        }
+        serialPortCombo->setCurrentText(currentText.isEmpty() ? QStringLiteral("AUTO") : currentText);
+    };
+    reloadSerialPorts();
+
+    auto *serialPortRow = new QWidget(sourceGroup);
+    auto *serialPortRowLayout = new QHBoxLayout(serialPortRow);
+    serialPortRowLayout->setContentsMargins(0, 0, 0, 0);
+    auto *refreshPortsButton = new QPushButton(tr("Refresh"), serialPortRow);
+    serialPortRowLayout->addWidget(serialPortCombo, 1);
+    serialPortRowLayout->addWidget(refreshPortsButton);
+    connect(refreshPortsButton, &QPushButton::clicked, this, [this, reloadSerialPorts]() {
+        m_serialManager.refreshSerialPorts();
+        reloadSerialPorts();
+    });
+
     auto *baudSpin = new QSpinBox(sourceGroup);
     baudSpin->setRange(1200, 921600);
     baudSpin->setValue(m_configManager.getValue(QStringLiteral("serial.baudRate"), QMetaType::Int).toInt());
+    auto *serialReconnectCheck = new QCheckBox(tr("Auto reconnect serial input"), sourceGroup);
+    serialReconnectCheck->setChecked(
+        m_configManager.getValue(QStringLiteral("serial.autoReconnect"), QMetaType::Bool).toBool());
+    auto *serialReconnectIntervalSpin = new QSpinBox(sourceGroup);
+    serialReconnectIntervalSpin->setRange(200, 60000);
+    serialReconnectIntervalSpin->setSuffix(tr(" ms"));
+    serialReconnectIntervalSpin->setValue(
+        m_configManager.getValue(QStringLiteral("serial.reconnectIntervalMs"), QMetaType::Int).toInt());
     auto *tcpHostEdit = new QLineEdit(
         m_configManager.getValue(QStringLiteral("tcp.host"), QMetaType::QString).toString(),
         sourceGroup);
@@ -286,11 +414,64 @@ void MainWindow::openSettingsDialog()
         m_configManager.getValue(QStringLiteral("simulation.intervalMs"), QMetaType::Int).toInt());
 
     sourceForm->addRow(tr("Mode"), modeCombo);
-    sourceForm->addRow(tr("Serial Port"), serialPortEdit);
+    sourceForm->addRow(tr("Serial Port"), serialPortRow);
     sourceForm->addRow(tr("Baud Rate"), baudSpin);
+    sourceForm->addRow(serialReconnectCheck);
+    sourceForm->addRow(tr("Reconnect Interval"), serialReconnectIntervalSpin);
     sourceForm->addRow(tr("TCP Host"), tcpHostEdit);
     sourceForm->addRow(tr("TCP Port"), tcpPortSpin);
     sourceForm->addRow(tr("Simulation Interval"), simulationIntervalSpin);
+
+    auto *modbusGroup = new QGroupBox(tr("Modbus"), &dialog);
+    auto *modbusForm = new QFormLayout(modbusGroup);
+    auto *modbusTcpHostEdit = new QLineEdit(
+        m_configManager.getValue(QStringLiteral("modbus.tcp.host"), QMetaType::QString).toString(),
+        modbusGroup);
+    auto *modbusTcpPortSpin = new QSpinBox(modbusGroup);
+    modbusTcpPortSpin->setRange(1, 65535);
+    modbusTcpPortSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.tcp.port"), QMetaType::Int).toInt());
+    auto *modbusRtuPortCombo = new QComboBox(modbusGroup);
+    modbusRtuPortCombo->setEditable(true);
+    modbusRtuPortCombo->addItems(m_serialManager.availableSerialPorts());
+    modbusRtuPortCombo->setCurrentText(
+        m_configManager.getValue(QStringLiteral("modbus.rtu.portName"), QMetaType::QString).toString());
+    auto *modbusRtuBaudSpin = new QSpinBox(modbusGroup);
+    modbusRtuBaudSpin->setRange(1200, 921600);
+    modbusRtuBaudSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.rtu.baudRate"), QMetaType::Int).toInt());
+    auto *modbusUnitSpin = new QSpinBox(modbusGroup);
+    modbusUnitSpin->setRange(1, 247);
+    modbusUnitSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.unitId"), QMetaType::Int).toInt());
+    auto *modbusStartAddressSpin = new QSpinBox(modbusGroup);
+    modbusStartAddressSpin->setRange(0, 65535);
+    modbusStartAddressSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.startAddress"), QMetaType::Int).toInt());
+    auto *modbusRegisterCountSpin = new QSpinBox(modbusGroup);
+    modbusRegisterCountSpin->setRange(1, 125);
+    modbusRegisterCountSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.registerCount"), QMetaType::Int).toInt());
+    auto *modbusPollIntervalSpin = new QSpinBox(modbusGroup);
+    modbusPollIntervalSpin->setRange(100, 60000);
+    modbusPollIntervalSpin->setSuffix(tr(" ms"));
+    modbusPollIntervalSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.pollIntervalMs"), QMetaType::Int).toInt());
+    auto *modbusTimeoutSpin = new QSpinBox(modbusGroup);
+    modbusTimeoutSpin->setRange(100, 60000);
+    modbusTimeoutSpin->setSuffix(tr(" ms"));
+    modbusTimeoutSpin->setValue(
+        m_configManager.getValue(QStringLiteral("modbus.timeoutMs"), QMetaType::Int).toInt());
+
+    modbusForm->addRow(tr("TCP Host"), modbusTcpHostEdit);
+    modbusForm->addRow(tr("TCP Port"), modbusTcpPortSpin);
+    modbusForm->addRow(tr("RTU Port"), modbusRtuPortCombo);
+    modbusForm->addRow(tr("RTU Baud Rate"), modbusRtuBaudSpin);
+    modbusForm->addRow(tr("Unit ID"), modbusUnitSpin);
+    modbusForm->addRow(tr("Start Address"), modbusStartAddressSpin);
+    modbusForm->addRow(tr("Register Count"), modbusRegisterCountSpin);
+    modbusForm->addRow(tr("Poll Interval"), modbusPollIntervalSpin);
+    modbusForm->addRow(tr("Timeout"), modbusTimeoutSpin);
 
     auto *alarmGroup = new QGroupBox(tr("Alarm Limits"), &dialog);
     auto *alarmForm = new QFormLayout(alarmGroup);
@@ -334,6 +515,7 @@ void MainWindow::openSettingsDialog()
     loggingForm->addRow(tr("Chart Points"), chartPointsSpin);
 
     dialogLayout->addWidget(sourceGroup);
+    dialogLayout->addWidget(modbusGroup);
     dialogLayout->addWidget(alarmGroup);
     dialogLayout->addWidget(loggingGroup);
 
@@ -352,11 +534,22 @@ void MainWindow::openSettingsDialog()
     }
 
     m_configManager.setValue(QStringLiteral("io.mode"), modeCombo->currentData().toString());
-    m_configManager.setValue(QStringLiteral("serial.portName"), serialPortEdit->text().trimmed());
+    m_configManager.setValue(QStringLiteral("serial.portName"), serialPortCombo->currentText().trimmed());
     m_configManager.setValue(QStringLiteral("serial.baudRate"), baudSpin->value());
+    m_configManager.setValue(QStringLiteral("serial.autoReconnect"), serialReconnectCheck->isChecked());
+    m_configManager.setValue(QStringLiteral("serial.reconnectIntervalMs"), serialReconnectIntervalSpin->value());
     m_configManager.setValue(QStringLiteral("tcp.host"), tcpHostEdit->text().trimmed());
     m_configManager.setValue(QStringLiteral("tcp.port"), tcpPortSpin->value());
     m_configManager.setValue(QStringLiteral("simulation.intervalMs"), simulationIntervalSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.tcp.host"), modbusTcpHostEdit->text().trimmed());
+    m_configManager.setValue(QStringLiteral("modbus.tcp.port"), modbusTcpPortSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.rtu.portName"), modbusRtuPortCombo->currentText().trimmed());
+    m_configManager.setValue(QStringLiteral("modbus.rtu.baudRate"), modbusRtuBaudSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.unitId"), modbusUnitSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.startAddress"), modbusStartAddressSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.registerCount"), modbusRegisterCountSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.pollIntervalMs"), modbusPollIntervalSpin->value());
+    m_configManager.setValue(QStringLiteral("modbus.timeoutMs"), modbusTimeoutSpin->value());
     m_configManager.setValue(QStringLiteral("alarm.temperatureHigh"), temperatureLimitSpin->value());
     m_configManager.setValue(QStringLiteral("alarm.pressureHigh"), pressureLimitSpin->value());
     m_configManager.setValue(QStringLiteral("alarm.flowHigh"), flowLimitSpin->value());
@@ -378,6 +571,8 @@ void MainWindow::setupRuntimeUiExtensions()
 
     setupChart();
     setupHistoryTable();
+    setupAlarmControls();
+    setupAlarmHistoryTable();
     setupLogView();
     setupLedIndicator();
 }
@@ -444,6 +639,43 @@ void MainWindow::setupHistoryTable()
     tableView->verticalHeader()->setVisible(false);
     tableView->setAlternatingRowColors(true);
     tableView->setMinimumHeight(140);
+
+    ui->extensionArea->layout()->addWidget(tableView);
+}
+
+void MainWindow::setupAlarmControls()
+{
+    auto *container = new QWidget(ui->extensionArea);
+    auto *layout = new QHBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    m_alarmAckButton = new QPushButton(tr("Acknowledge Alarm"), container);
+    m_alarmSilenceButton = new QPushButton(tr("Silence Alarm"), container);
+
+    layout->addWidget(m_alarmAckButton);
+    layout->addWidget(m_alarmSilenceButton);
+    layout->addStretch(1);
+
+    ui->extensionArea->layout()->addWidget(container);
+}
+
+void MainWindow::setupAlarmHistoryTable()
+{
+    auto *tableView = new QTableView(ui->extensionArea);
+    m_alarmHistoryModel = new QStandardItemModel(this);
+    m_alarmHistoryModel->setHorizontalHeaderLabels({
+        tr("Time"),
+        tr("State"),
+        tr("Ack"),
+        tr("Silenced"),
+        tr("Message")
+    });
+
+    tableView->setModel(m_alarmHistoryModel);
+    tableView->horizontalHeader()->setStretchLastSection(true);
+    tableView->verticalHeader()->setVisible(false);
+    tableView->setAlternatingRowColors(true);
+    tableView->setMinimumHeight(110);
 
     ui->extensionArea->layout()->addWidget(tableView);
 }
@@ -563,7 +795,16 @@ void MainWindow::updateAlarmUi(const AlarmManager::AlarmState &alarmState)
     const QString color = alarmState.active ? QStringLiteral("#D64545")
                                             : QStringLiteral("#2FA84F");
 
-    ui->alarmValueLabel->setText(alarmState.active ? tr("Alarm") : tr("Normal"));
+    QString alarmText = tr("Normal");
+    if (alarmState.active && alarmState.silenced) {
+        alarmText = tr("Silenced");
+    } else if (alarmState.active && alarmState.acknowledged) {
+        alarmText = tr("Acknowledged");
+    } else if (alarmState.active) {
+        alarmText = tr("Alarm");
+    }
+
+    ui->alarmValueLabel->setText(alarmText);
     ui->alarmValueLabel->setToolTip(alarmState.message);
     ui->alarmValueLabel->setStyleSheet(alarmState.active
                                            ? QStringLiteral("color: #F5B7B1; font-weight: 700;")
@@ -572,6 +813,37 @@ void MainWindow::updateAlarmUi(const AlarmManager::AlarmState &alarmState)
         "border-radius: 9px;"
         "border: 1px solid #555;"
         "background-color: %1;").arg(color));
+
+    if (m_alarmAckButton) {
+        m_alarmAckButton->setEnabled(alarmState.active && !alarmState.acknowledged);
+    }
+
+    if (m_alarmSilenceButton) {
+        m_alarmSilenceButton->setEnabled(alarmState.active || m_alarmManager.isSilenced());
+        m_alarmSilenceButton->setText(m_alarmManager.isSilenced()
+                                          ? tr("Enable Alarm Sound")
+                                          : tr("Silence Alarm"));
+    }
+}
+
+void MainWindow::refreshAlarmHistoryTable()
+{
+    if (!m_alarmHistoryModel) {
+        return;
+    }
+
+    m_alarmHistoryModel->removeRows(0, m_alarmHistoryModel->rowCount());
+
+    const QVector<AlarmManager::AlarmRecord> records = m_alarmManager.history();
+    for (const AlarmManager::AlarmRecord &record : records) {
+        QList<QStandardItem *> row;
+        row << new QStandardItem(record.timestamp.toString(QStringLiteral("HH:mm:ss.zzz")));
+        row << new QStandardItem(record.active ? tr("Active") : tr("Cleared"));
+        row << new QStandardItem(record.acknowledged ? tr("Yes") : tr("No"));
+        row << new QStandardItem(record.silenced ? tr("Yes") : tr("No"));
+        row << new QStandardItem(record.message);
+        m_alarmHistoryModel->appendRow(row);
+    }
 }
 
 QString MainWindow::formatValues(const QVector<double> &values) const

@@ -8,8 +8,11 @@ Qt6 Widgets based HMI dashboard prototype for serial/TCP data acquisition, realt
 - CMake build system
 - TCP simulated data source enabled by default
 - Optional Qt6 SerialPort support when the module is installed
+- Optional Qt6 SerialBus support for Modbus RTU/TCP when the module is installed
 - Abstract data-source layer for TCP simulation, TCP socket, and serial input
+- Serial port auto-scan, hotplug refresh, and reconnect support
 - Dedicated alarm manager with configurable high limits
+- Alarm acknowledge, silence, and history workflow
 - Runtime settings dialog for IO mode, serial/TCP parameters, alarm limits, logging, and UI limits
 - CSV data logging with one file per acquisition session
 - Realtime signal chain:
@@ -25,8 +28,10 @@ Qt6 Widgets based HMI dashboard prototype for serial/TCP data acquisition, realt
   - History table
   - Runtime log
   - LED alarm indicator
+  - Alarm operation/history panel
   - Live value cards
 - Manual `uic` / `moc` helper scripts for restricted PowerShell environments
+- Lightweight C++ unit test target for parser, alarms, config, and CSV logging
 
 ## Project Structure
 
@@ -103,9 +108,10 @@ Optional:
 
 ```text
 Qt6::SerialPort
+Qt6::SerialBus
 ```
 
-If `Qt6SerialPort` is not installed, the project still builds and runs with TCP simulation.
+If `Qt6SerialPort` or `Qt6SerialBus` is not installed, the project still builds and runs with TCP simulation.
 
 ## Build Release
 
@@ -123,6 +129,7 @@ Release executable:
 
 ```text
 build/Release/HMI_SerialDashboard.exe
+build/Release/hmi_unit_tests.exe
 ```
 
 ## Generate UI And MOC Files Only
@@ -147,6 +154,21 @@ build/Release/manual_autogen/moc/moc_dataprocessor.cpp
 build/Release/manual_autogen/moc/moc_workerthread.cpp
 build/Release/manual_autogen/moc/moc_configmanager.cpp
 build/Release/manual_autogen/moc/moc_datalogger.cpp
+```
+
+## Run Unit Tests
+
+```powershell
+cd E:\HMI_SerialDashboard
+
+$env:PATH = "C:\Qt\6.11.0\mingw_64\bin;C:\Qt\Tools\mingw1310_64\bin;$env:PATH"
+.\build\Release\hmi_unit_tests.exe
+```
+
+Expected output:
+
+```text
+All HMI unit tests passed.
 ```
 
 ## Deploy
@@ -200,8 +222,19 @@ When no config file exists, `MainWindow` creates default values for:
 io.mode
 serial.portName
 serial.baudRate
+serial.autoReconnect
+serial.reconnectIntervalMs
 tcp.host
 tcp.port
+modbus.tcp.host
+modbus.tcp.port
+modbus.rtu.portName
+modbus.rtu.baudRate
+modbus.unitId
+modbus.startAddress
+modbus.registerCount
+modbus.pollIntervalMs
+modbus.timeoutMs
 simulation.intervalMs
 worker.intervalMs
 alarm.temperatureHigh
@@ -215,6 +248,16 @@ ui.maxChartPoints
 
 Use the `Settings` button in the left control panel to edit these values at runtime.
 If acquisition is running, the app stops it before applying the new settings.
+
+Supported `io.mode` values:
+
+```text
+tcp-sim
+tcp
+serial
+modbus-tcp
+modbus-rtu
+```
 
 ## Data Logging
 
@@ -259,6 +302,7 @@ Selects and manages the active input source.
 - Keeps the external `start()`, `stop()`, `readOnce()` API stable
 - Delegates actual IO to `DataSource` implementations
 - Emits `dataReceived(QString)`
+- Forwards serial port list changes to the UI
 
 ### DataSource
 
@@ -267,6 +311,7 @@ Abstract input layer.
 - `TcpSimulationDataSource`: deterministic simulated HMI values
 - `TcpSocketDataSource`: raw TCP client data
 - `SerialPortDataSource`: real serial data when `Qt6SerialPort` is installed
+- `ModbusDataSource`: Modbus TCP/RTU holding-register polling when `Qt6SerialBus` is installed
 - Future sources can be added without changing the processing/UI pipeline
 
 ### DataProcessor
@@ -292,6 +337,7 @@ Central alarm evaluator.
 - Owns temperature, pressure, and flow high limits
 - Evaluates processed values
 - Emits `alarmStateChanged(bool, QString)` only when state/message changes
+- Tracks acknowledge/silence state and alarm history
 - Keeps LED, alarm text, and alarm logging out of parsing/threading code
 
 ### DataLogger
@@ -312,6 +358,8 @@ HMI UI layer.
 - History table
 - Runtime log
 - LED alarm indicator
+- Alarm acknowledge/silence buttons
+- Alarm history table
 - Live value cards
 - CSV data logging coordination
 
@@ -344,6 +392,7 @@ Expected contents include:
 
 ```text
 HMI_SerialDashboard.exe
+hmi_unit_tests.exe
 Qt6*.dll
 platforms/qwindows.dll
 README.md
@@ -351,7 +400,7 @@ config/
 data_logs/
 ```
 
-`Qt6SerialPort.dll` is copied only when the Qt SerialPort module is installed.
+`Qt6SerialPort.dll` and `Qt6SerialBus.dll` are copied only when those Qt modules are installed.
 
 ## Development Notes
 
@@ -362,9 +411,8 @@ data_logs/
 
 ## Further Work
 
-- Add serial port auto-scan and reconnect logic.
 - Add CSV replay mode for offline debugging.
-- Add alarm acknowledge/silence/history workflow.
-- Add protocol adapters such as Modbus RTU/TCP.
-- Add unit tests for parser, alarms, config, and logger.
+- Add live serial protocol framing presets.
+- Add Modbus write/register-map editor.
+- Add UI actions for exporting alarm history.
 - Add an installer script with Inno Setup or NSIS.

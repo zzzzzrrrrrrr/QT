@@ -14,7 +14,9 @@
 
 #include <QLabel>
 #include <QMainWindow>
+#include <QPushButton>
 #include <QStandardItemModel>
+#include <QStringList>
 #include <QTextEdit>
 #include <QVector>
 
@@ -43,6 +45,9 @@ private slots:
     void handleStartClicked();
     void handleStopClicked();
     void handleSettingsClicked();
+    void handleAlarmAcknowledgeClicked();
+    void handleAlarmSilenceClicked();
+    void handleAvailableSerialPortsChanged(const QStringList &ports);
     void handleProcessedData(const QVector<double> &values);
     void handleStatusMessage(const QString &message);
 
@@ -58,6 +63,8 @@ private:
     void setupRuntimeUiExtensions();
     void setupChart();
     void setupHistoryTable();
+    void setupAlarmControls();
+    void setupAlarmHistoryTable();
     void setupLogView();
     void setupLedIndicator();
     void updateValueCards(const QVector<double> &values);
@@ -66,6 +73,7 @@ private:
     void appendLogMessage(const QString &message);
     void updateChart(const QVector<double> &values);
     void updateAlarmUi(const AlarmManager::AlarmState &alarmState);
+    void refreshAlarmHistoryTable();
     QString formatValues(const QVector<double> &values) const;
     QString configFilePath() const;
     QString defaultDataLogDirectory() const;
@@ -79,8 +87,11 @@ private:
     AlarmManager m_alarmManager;
     DataLogger m_dataLogger;
     QStandardItemModel *m_historyModel = nullptr;
+    QStandardItemModel *m_alarmHistoryModel = nullptr;
     QTextEdit *m_logView = nullptr;
     QLabel *m_ledIndicator = nullptr;
+    QPushButton *m_alarmAckButton = nullptr;
+    QPushButton *m_alarmSilenceButton = nullptr;
     bool m_loggingEnabled = true;
     int m_sampleIndex = 0;
     int m_maxHistoryRows = 200;

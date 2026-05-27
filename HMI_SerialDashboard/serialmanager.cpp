@@ -7,6 +7,8 @@ SerialManager::SerialManager(QObject *parent)
     , m_tcpSimulationSource(this)
     , m_tcpSocketSource(this)
     , m_serialPortSource(this)
+    , m_modbusTcpSource(ModbusDataSource::Transport::Tcp, this)
+    , m_modbusRtuSource(ModbusDataSource::Transport::Rtu, this)
 {
     const auto connectSource = [this](DataSource *source) {
         connect(source, &DataSource::dataReceived,
@@ -18,6 +20,11 @@ SerialManager::SerialManager(QObject *parent)
     connectSource(&m_tcpSimulationSource);
     connectSource(&m_tcpSocketSource);
     connectSource(&m_serialPortSource);
+    connectSource(&m_modbusTcpSource);
+    connectSource(&m_modbusRtuSource);
+
+    connect(&m_serialPortSource, &DataSource::availablePortsChanged,
+            this, &SerialManager::availableSerialPortsChanged);
 }
 
 SerialManager::~SerialManager()
@@ -65,6 +72,60 @@ void SerialManager::setTcpSimulationEnabled(bool enabled)
 void SerialManager::setSimulationIntervalMs(int intervalMs)
 {
     m_tcpSimulationSource.setIntervalMs(intervalMs);
+}
+
+void SerialManager::setSerialAutoReconnectEnabled(bool enabled)
+{
+    m_serialPortSource.setAutoReconnectEnabled(enabled);
+}
+
+void SerialManager::setSerialReconnectIntervalMs(int intervalMs)
+{
+    m_serialPortSource.setReconnectIntervalMs(intervalMs);
+}
+
+QStringList SerialManager::availableSerialPorts() const
+{
+    return m_serialPortSource.availablePortNames();
+}
+
+void SerialManager::setModbusTcpEndpoint(const QString &host, quint16 port)
+{
+    m_modbusTcpSource.setTcpEndpoint(host, port);
+}
+
+void SerialManager::setModbusSerialPortName(const QString &portName)
+{
+    m_modbusRtuSource.setSerialPortName(portName);
+}
+
+void SerialManager::setModbusBaudRate(qint32 baudRate)
+{
+    m_modbusRtuSource.setBaudRate(baudRate);
+}
+
+void SerialManager::setModbusUnitId(int unitId)
+{
+    m_modbusTcpSource.setUnitId(unitId);
+    m_modbusRtuSource.setUnitId(unitId);
+}
+
+void SerialManager::setModbusRegisterRange(int startAddress, int registerCount)
+{
+    m_modbusTcpSource.setRegisterRange(startAddress, registerCount);
+    m_modbusRtuSource.setRegisterRange(startAddress, registerCount);
+}
+
+void SerialManager::setModbusPollIntervalMs(int intervalMs)
+{
+    m_modbusTcpSource.setPollIntervalMs(intervalMs);
+    m_modbusRtuSource.setPollIntervalMs(intervalMs);
+}
+
+void SerialManager::setModbusTimeoutMs(int timeoutMs)
+{
+    m_modbusTcpSource.setTimeoutMs(timeoutMs);
+    m_modbusRtuSource.setTimeoutMs(timeoutMs);
 }
 
 bool SerialManager::isRunning() const
@@ -120,6 +181,11 @@ void SerialManager::stopTcpSimulation()
     }
 }
 
+void SerialManager::refreshSerialPorts()
+{
+    m_serialPortSource.refreshAvailablePorts();
+}
+
 void SerialManager::forwardDataReceived(const QString &data)
 {
     qDebug().noquote() << "[SerialManager] emit dataReceived(QString) =" << data;
@@ -132,6 +198,14 @@ DataSource *SerialManager::selectedSource()
         return &m_serialPortSource;
     }
 
+    if (m_connectionType == ConnectionType::ModbusTcp) {
+        return &m_modbusTcpSource;
+    }
+
+    if (m_connectionType == ConnectionType::ModbusRtu) {
+        return &m_modbusRtuSource;
+    }
+
     return m_tcpSimulationEnabled ? static_cast<DataSource *>(&m_tcpSimulationSource)
                                   : static_cast<DataSource *>(&m_tcpSocketSource);
 }
@@ -140,6 +214,14 @@ const DataSource *SerialManager::selectedSource() const
 {
     if (m_connectionType == ConnectionType::SerialPort) {
         return &m_serialPortSource;
+    }
+
+    if (m_connectionType == ConnectionType::ModbusTcp) {
+        return &m_modbusTcpSource;
+    }
+
+    if (m_connectionType == ConnectionType::ModbusRtu) {
+        return &m_modbusRtuSource;
     }
 
     return m_tcpSimulationEnabled ? static_cast<const DataSource *>(&m_tcpSimulationSource)
@@ -151,4 +233,6 @@ void SerialManager::stopAllSources()
     m_tcpSimulationSource.stop();
     m_tcpSocketSource.stop();
     m_serialPortSource.stop();
+    m_modbusTcpSource.stop();
+    m_modbusRtuSource.stop();
 }
