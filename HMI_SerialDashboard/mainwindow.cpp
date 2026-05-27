@@ -15,6 +15,7 @@
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QLineEdit>
+#include <QPointF>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTableView>
@@ -27,8 +28,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     setupRuntimeUiExtensions();
-    initializeModules();
     connectSignals();
+    initializeModules();
 
     ui->statusbar->showMessage(tr("Ready"));
 }
@@ -44,6 +45,10 @@ void MainWindow::handleStartClicked()
     qDebug().noquote() << "[Step2][MainWindow] Start clicked";
 
     configureInputSource();
+    m_pendingLatestValues.clear();
+    m_pendingUiSamples.clear();
+    m_droppedUiSamples = 0;
+    m_hasPendingUiUpdate = false;
 
     if (!m_workerThread.isRunning()) {
         m_workerThread.start();
@@ -67,6 +72,7 @@ void MainWindow::handleStopClicked()
 {
     qDebug().noquote() << "[Step2][MainWindow] Stop clicked";
 
+    flushPendingUiUpdates();
     m_serialManager.stop();
     m_dataLogger.stopSession();
 
@@ -110,26 +116,56 @@ void MainWindow::handleAvailableSerialPortsChanged(const QStringList &ports)
 
 void MainWindow::handleProcessedData(const QVector<double> &values)
 {
-    const QString valuesText = formatValues(values);
     const AlarmManager::AlarmState alarmState = m_alarmManager.evaluate(values);
 
-    ui->dataView->setPlainText(tr("Processed values:\n%1").arg(valuesText));
-    updateValueCards(values);
-    appendHistoryRow(values);
-    updateChart(values);
-    updateAlarmUi(alarmState);
     if (m_loggingEnabled) {
         m_dataLogger.logSample(values, alarmState.active, alarmState.message);
     }
-    appendLogMessage(tr("Processed values: %1").arg(valuesText));
 
-    qDebug().noquote() << "[Step2][MainWindow] UI updated with processed data =" << valuesText;
+    m_pendingLatestValues = values;
+    m_pendingAlarmState = alarmState;
+    m_hasPendingUiUpdate = true;
+    m_pendingUiSamples.append(values);
+
+    while (m_pendingUiSamples.size() > m_maxSamplesPerUiRefresh) {
+        m_pendingUiSamples.removeFirst();
+        ++m_droppedUiSamples;
+    }
 }
 
 void MainWindow::handleStatusMessage(const QString &message)
 {
     ui->statusbar->showMessage(message);
     appendLogMessage(message);
+}
+
+void MainWindow::flushPendingUiUpdates()
+{
+    if (!m_hasPendingUiUpdate) {
+        return;
+    }
+
+    const QVector<double> latestValues = m_pendingLatestValues;
+    const QVector<QVector<double>> samples = m_pendingUiSamples;
+    const AlarmManager::AlarmState alarmState = m_pendingAlarmState;
+    const int droppedSamples = m_droppedUiSamples;
+
+    m_pendingLatestValues.clear();
+    m_pendingUiSamples.clear();
+    m_droppedUiSamples = 0;
+    m_hasPendingUiUpdate = false;
+
+    const QString valuesText = formatValues(latestValues);
+    ui->dataView->setPlainText(tr("Processed values:\n%1").arg(valuesText));
+    updateValueCards(latestValues);
+    appendHistoryRows(samples);
+    updateChartBatch(samples);
+    updateAlarmUi(alarmState);
+
+    const QString statusText = droppedSamples > 0
+                                   ? tr("UI refreshed, %1 samples coalesced").arg(droppedSamples)
+                                   : tr("UI refreshed");
+    ui->statusbar->showMessage(statusText);
 }
 
 void MainWindow::initializeModules()
@@ -190,6 +226,8 @@ void MainWindow::connectSignals()
             this, &MainWindow::appendLogMessage);
     connect(&m_dataLogger, &DataLogger::errorOccurred,
             this, &MainWindow::handleStatusMessage);
+    connect(&m_uiRefreshTimer, &QTimer::timeout,
+            this, &MainWindow::flushPendingUiUpdates);
 }
 
 void MainWindow::ensureDefaultConfiguration()
@@ -217,8 +255,11 @@ void MainWindow::ensureDefaultConfiguration()
     setDefaultValue(QStringLiteral("alarm.flowHigh"), 70.0);
     setDefaultValue(QStringLiteral("logging.enabled"), true);
     setDefaultValue(QStringLiteral("logging.directory"), defaultDataLogDirectory());
+    setDefaultValue(QStringLiteral("logging.flushIntervalMs"), 1000);
     setDefaultValue(QStringLiteral("ui.maxHistoryRows"), 200);
     setDefaultValue(QStringLiteral("ui.maxChartPoints"), 120);
+    setDefaultValue(QStringLiteral("ui.refreshIntervalMs"), 200);
+    setDefaultValue(QStringLiteral("ui.maxSamplesPerRefresh"), 20);
 }
 
 void MainWindow::loadConfiguration()
@@ -286,7 +327,18 @@ void MainWindow::applyConfiguration()
     m_loggingEnabled = m_configManager.getValue(QStringLiteral("logging.enabled"), QMetaType::Bool).toBool();
     m_dataLogger.setOutputDirectory(
         m_configManager.getValue(QStringLiteral("logging.directory"), QMetaType::QString).toString());
+    m_dataLogger.setFlushIntervalMs(
+        m_configManager.getValue(QStringLiteral("logging.flushIntervalMs"), QMetaType::Int).toInt());
     m_maxHistoryRows = m_configManager.getValue(QStringLiteral("ui.maxHistoryRows"), QMetaType::Int).toInt();
+    m_uiRefreshIntervalMs = qMax(
+        50,
+        m_configManager.getValue(QStringLiteral("ui.refreshIntervalMs"), QMetaType::Int).toInt());
+    m_maxSamplesPerUiRefresh = qBound(
+        1,
+        m_configManager.getValue(QStringLiteral("ui.maxSamplesPerRefresh"), QMetaType::Int).toInt(),
+        500);
+    m_uiRefreshTimer.setTimerType(Qt::CoarseTimer);
+    m_uiRefreshTimer.start(m_uiRefreshIntervalMs);
 
 #if HMI_HAS_QT_CHARTS
     m_maxChartPoints = m_configManager.getValue(QStringLiteral("ui.maxChartPoints"), QMetaType::Int).toInt();
@@ -508,11 +560,28 @@ void MainWindow::openSettingsDialog()
     chartPointsSpin->setRange(20, 5000);
     chartPointsSpin->setValue(
         m_configManager.getValue(QStringLiteral("ui.maxChartPoints"), QMetaType::Int).toInt());
+    auto *uiRefreshIntervalSpin = new QSpinBox(loggingGroup);
+    uiRefreshIntervalSpin->setRange(50, 5000);
+    uiRefreshIntervalSpin->setSuffix(tr(" ms"));
+    uiRefreshIntervalSpin->setValue(
+        m_configManager.getValue(QStringLiteral("ui.refreshIntervalMs"), QMetaType::Int).toInt());
+    auto *samplesPerRefreshSpin = new QSpinBox(loggingGroup);
+    samplesPerRefreshSpin->setRange(1, 500);
+    samplesPerRefreshSpin->setValue(
+        m_configManager.getValue(QStringLiteral("ui.maxSamplesPerRefresh"), QMetaType::Int).toInt());
+    auto *logFlushIntervalSpin = new QSpinBox(loggingGroup);
+    logFlushIntervalSpin->setRange(100, 60000);
+    logFlushIntervalSpin->setSuffix(tr(" ms"));
+    logFlushIntervalSpin->setValue(
+        m_configManager.getValue(QStringLiteral("logging.flushIntervalMs"), QMetaType::Int).toInt());
 
     loggingForm->addRow(loggingEnabledCheck);
     loggingForm->addRow(tr("CSV Directory"), loggingDirectoryEdit);
+    loggingForm->addRow(tr("CSV Flush Interval"), logFlushIntervalSpin);
     loggingForm->addRow(tr("History Rows"), historyRowsSpin);
     loggingForm->addRow(tr("Chart Points"), chartPointsSpin);
+    loggingForm->addRow(tr("UI Refresh Interval"), uiRefreshIntervalSpin);
+    loggingForm->addRow(tr("Samples Per Refresh"), samplesPerRefreshSpin);
 
     dialogLayout->addWidget(sourceGroup);
     dialogLayout->addWidget(modbusGroup);
@@ -555,8 +624,11 @@ void MainWindow::openSettingsDialog()
     m_configManager.setValue(QStringLiteral("alarm.flowHigh"), flowLimitSpin->value());
     m_configManager.setValue(QStringLiteral("logging.enabled"), loggingEnabledCheck->isChecked());
     m_configManager.setValue(QStringLiteral("logging.directory"), loggingDirectoryEdit->text().trimmed());
+    m_configManager.setValue(QStringLiteral("logging.flushIntervalMs"), logFlushIntervalSpin->value());
     m_configManager.setValue(QStringLiteral("ui.maxHistoryRows"), historyRowsSpin->value());
     m_configManager.setValue(QStringLiteral("ui.maxChartPoints"), chartPointsSpin->value());
+    m_configManager.setValue(QStringLiteral("ui.refreshIntervalMs"), uiRefreshIntervalSpin->value());
+    m_configManager.setValue(QStringLiteral("ui.maxSamplesPerRefresh"), samplesPerRefreshSpin->value());
 
     applyConfiguration();
     saveConfiguration();
@@ -741,6 +813,13 @@ void MainWindow::appendHistoryRow(const QVector<double> &values)
     }
 }
 
+void MainWindow::appendHistoryRows(const QVector<QVector<double>> &samples)
+{
+    for (const QVector<double> &values : samples) {
+        appendHistoryRow(values);
+    }
+}
+
 void MainWindow::appendLogMessage(const QString &message)
 {
     if (!m_logView) {
@@ -783,6 +862,56 @@ void MainWindow::updateChart(const QVector<double> &values)
     m_axisX->setRange(minX, qMax<qreal>(m_maxChartPoints, x));
 #else
     Q_UNUSED(values)
+#endif
+}
+
+void MainWindow::updateChartBatch(const QVector<QVector<double>> &samples)
+{
+#if HMI_HAS_QT_CHARTS
+    if (!m_temperatureSeries || samples.isEmpty()) {
+        return;
+    }
+
+    QList<QPointF> temperaturePoints;
+    QList<QPointF> pressurePoints;
+    QList<QPointF> flowPoints;
+    temperaturePoints.reserve(samples.size());
+    pressurePoints.reserve(samples.size());
+    flowPoints.reserve(samples.size());
+
+    qreal lastX = m_sampleIndex;
+    for (const QVector<double> &values : samples) {
+        const qreal x = m_sampleIndex++;
+        lastX = x;
+        if (values.size() > 0) {
+            temperaturePoints.append(QPointF(x, values.at(0)));
+        }
+        if (values.size() > 1) {
+            pressurePoints.append(QPointF(x, values.at(1)));
+        }
+        if (values.size() > 2) {
+            flowPoints.append(QPointF(x, values.at(2)));
+        }
+    }
+
+    m_temperatureSeries->append(temperaturePoints);
+    m_pressureSeries->append(pressurePoints);
+    m_flowSeries->append(flowPoints);
+
+    auto trimSeries = [this](QLineSeries *series) {
+        while (series && series->count() > m_maxChartPoints) {
+            series->remove(0);
+        }
+    };
+
+    trimSeries(m_temperatureSeries);
+    trimSeries(m_pressureSeries);
+    trimSeries(m_flowSeries);
+
+    const qreal minX = qMax<qreal>(0, lastX - m_maxChartPoints + 1);
+    m_axisX->setRange(minX, qMax<qreal>(m_maxChartPoints, lastX));
+#else
+    Q_UNUSED(samples)
 #endif
 }
 

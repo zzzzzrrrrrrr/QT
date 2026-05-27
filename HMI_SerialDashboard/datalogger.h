@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QVector>
 
 /**
@@ -18,6 +19,7 @@ public:
     ~DataLogger() override;
 
     void setOutputDirectory(const QString &directoryPath);
+    void setFlushIntervalMs(int intervalMs);
     QString outputDirectory() const;
     QString currentFilePath() const;
     bool isRecording() const;
@@ -26,6 +28,7 @@ public slots:
     bool startSession();
     void stopSession();
     bool logSample(const QVector<double> &values, bool alarmActive, const QString &alarmMessage);
+    void flush();
 
 signals:
     void logMessage(const QString &message);
@@ -39,6 +42,8 @@ private:
     QString m_outputDirectory;
     QString m_currentFilePath;
     QFile m_file;
+    QTimer m_flushTimer;
+    int m_flushIntervalMs = 1000;
 };
 
 #endif // DATALOGGER_H

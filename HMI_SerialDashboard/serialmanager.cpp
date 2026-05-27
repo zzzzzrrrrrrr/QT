@@ -2,6 +2,10 @@
 
 #include <QDebug>
 
+namespace {
+constexpr bool kVerboseDataTrace = false;
+}
+
 SerialManager::SerialManager(QObject *parent)
     : QObject(parent)
     , m_tcpSimulationSource(this)
@@ -188,7 +192,9 @@ void SerialManager::refreshSerialPorts()
 
 void SerialManager::forwardDataReceived(const QString &data)
 {
-    qDebug().noquote() << "[SerialManager] emit dataReceived(QString) =" << data;
+    if (kVerboseDataTrace) {
+        qDebug().noquote() << "[SerialManager] emit dataReceived(QString) =" << data;
+    }
     emit dataReceived(data);
 }
 

@@ -18,6 +18,7 @@
 #include <QStandardItemModel>
 #include <QStringList>
 #include <QTextEdit>
+#include <QTimer>
 #include <QVector>
 
 #if HMI_HAS_QT_CHARTS
@@ -50,6 +51,7 @@ private slots:
     void handleAvailableSerialPortsChanged(const QStringList &ports);
     void handleProcessedData(const QVector<double> &values);
     void handleStatusMessage(const QString &message);
+    void flushPendingUiUpdates();
 
 private:
     void initializeModules();
@@ -74,6 +76,8 @@ private:
     void updateChart(const QVector<double> &values);
     void updateAlarmUi(const AlarmManager::AlarmState &alarmState);
     void refreshAlarmHistoryTable();
+    void updateChartBatch(const QVector<QVector<double>> &samples);
+    void appendHistoryRows(const QVector<QVector<double>> &samples);
     QString formatValues(const QVector<double> &values) const;
     QString configFilePath() const;
     QString defaultDataLogDirectory() const;
@@ -95,6 +99,14 @@ private:
     bool m_loggingEnabled = true;
     int m_sampleIndex = 0;
     int m_maxHistoryRows = 200;
+    int m_uiRefreshIntervalMs = 200;
+    int m_maxSamplesPerUiRefresh = 20;
+    int m_droppedUiSamples = 0;
+    bool m_hasPendingUiUpdate = false;
+    QVector<double> m_pendingLatestValues;
+    QVector<QVector<double>> m_pendingUiSamples;
+    AlarmManager::AlarmState m_pendingAlarmState;
+    QTimer m_uiRefreshTimer;
 
 #if HMI_HAS_QT_CHARTS
     QChart *m_chart = nullptr;

@@ -5,6 +5,10 @@
 #include <QRegularExpression>
 #include <QRegularExpressionMatchIterator>
 
+namespace {
+constexpr bool kVerboseDataTrace = false;
+}
+
 DataProcessor::DataProcessor(QObject *parent)
     : QObject(parent)
 {
@@ -19,16 +23,21 @@ QVector<double> DataProcessor::getLatestData() const
 void DataProcessor::processRawData(const QString &rawData)
 {
     if (rawData.trimmed().isEmpty()) {
-        qDebug().noquote() << "[Step2][DataProcessor] ignored empty raw data";
+        if (kVerboseDataTrace) {
+            qDebug().noquote() << "[Step2][DataProcessor] ignored empty raw data";
+        }
         return;
     }
 
-    // Step 2 verification: raw QString arrives from SerialManager.
-    qDebug().noquote() << "[Step2][DataProcessor] raw data =" << rawData;
+    if (kVerboseDataTrace) {
+        qDebug().noquote() << "[Step2][DataProcessor] raw data =" << rawData;
+    }
 
     const QVector<double> values = parseValues(rawData);
     if (values.isEmpty()) {
-        qDebug().noquote() << "[Step2][DataProcessor] no numeric values parsed";
+        if (kVerboseDataTrace) {
+            qDebug().noquote() << "[Step2][DataProcessor] no numeric values parsed";
+        }
         return;
     }
 
@@ -37,7 +46,9 @@ void DataProcessor::processRawData(const QString &rawData)
         m_latestData = values;
     }
 
-    qDebug().noquote() << "[Step2][DataProcessor] emit dataUpdated(QVector<double>) =" << values;
+    if (kVerboseDataTrace) {
+        qDebug().noquote() << "[Step2][DataProcessor] emit dataUpdated(QVector<double>) =" << values;
+    }
     emit dataUpdated(values);
 }
 

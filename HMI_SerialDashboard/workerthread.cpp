@@ -6,6 +6,10 @@
 #include <QWriteLocker>
 #include <algorithm>
 
+namespace {
+constexpr bool kVerboseDataTrace = false;
+}
+
 WorkerThread::WorkerThread(QObject *parent)
     : QThread(parent)
 {
@@ -42,7 +46,9 @@ void WorkerThread::requestProcessing()
 {
     m_processingRequested.store(true, std::memory_order_release);
     m_waitCondition.wakeOne();
-    qDebug().noquote() << "[Step2][WorkerThread] processing requested";
+    if (kVerboseDataTrace) {
+        qDebug().noquote() << "[Step2][WorkerThread] processing requested";
+    }
 }
 
 void WorkerThread::stop()
@@ -75,8 +81,9 @@ void WorkerThread::run()
             previousValues = values;
             const QVector<double> processedValues = calculateValues(values);
 
-            // Step 2 verification: background thread transforms latest data.
-            qDebug().noquote() << "[Step2][WorkerThread] processed data =" << processedValues;
+            if (kVerboseDataTrace) {
+                qDebug().noquote() << "[Step2][WorkerThread] processed data =" << processedValues;
+            }
 
             emit dataProcessed(processedValues);
         }

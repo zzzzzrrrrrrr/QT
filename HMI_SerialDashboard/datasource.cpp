@@ -15,6 +15,10 @@
 #include <QModbusTcpClient>
 #endif
 
+namespace {
+constexpr bool kVerboseDataTrace = false;
+}
+
 DataSource::DataSource(QObject *parent)
     : QObject(parent)
 {
@@ -83,7 +87,9 @@ bool TcpSimulationDataSource::isRunning() const
 void TcpSimulationDataSource::sendSimulatedData()
 {
     const QString payload = buildPayload();
-    qDebug().noquote() << "[DataSource][TcpSimulation] data =" << payload;
+    if (kVerboseDataTrace) {
+        qDebug().noquote() << "[DataSource][TcpSimulation] data =" << payload;
+    }
     emitIfNotEmpty(payload);
 }
 
@@ -579,7 +585,9 @@ void ModbusDataSource::handleReadReply(QModbusReply *reply)
 
     if (reply->error() == QModbusDevice::NoError) {
         const QString payload = payloadFromUnit(reply->result());
-        qDebug().noquote() << "[DataSource][Modbus] data =" << payload;
+        if (kVerboseDataTrace) {
+            qDebug().noquote() << "[DataSource][Modbus] data =" << payload;
+        }
         emitIfNotEmpty(payload);
     } else {
         emit errorOccurred(QStringLiteral("Modbus reply error: %1").arg(reply->errorString()));

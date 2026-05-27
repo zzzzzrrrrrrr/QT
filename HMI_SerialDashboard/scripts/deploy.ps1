@@ -100,6 +100,11 @@ if (Test-Path $ReadmePath) {
     Copy-Item -LiteralPath $ReadmePath -Destination $PackageDir -Force
 }
 
+$ArchitecturePath = Join-Path $RepoRoot "ARCHITECTURE.md"
+if (Test-Path $ArchitecturePath) {
+    Copy-Item -LiteralPath $ArchitecturePath -Destination $PackageDir -Force
+}
+
 $BuildConfigDir = Join-Path $BuildDir "config"
 if (Test-Path $BuildConfigDir) {
     Copy-Item -LiteralPath $BuildConfigDir -Destination $PackageDir -Recurse -Force

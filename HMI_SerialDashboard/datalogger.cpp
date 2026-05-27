@@ -3,10 +3,14 @@
 #include <QDateTime>
 #include <QDir>
 #include <QTextStream>
+#include <QtGlobal>
 
 DataLogger::DataLogger(QObject *parent)
     : QObject(parent)
 {
+    m_flushTimer.setInterval(m_flushIntervalMs);
+    connect(&m_flushTimer, &QTimer::timeout,
+            this, &DataLogger::flush);
 }
 
 DataLogger::~DataLogger()
@@ -17,6 +21,12 @@ DataLogger::~DataLogger()
 void DataLogger::setOutputDirectory(const QString &directoryPath)
 {
     m_outputDirectory = QDir::cleanPath(directoryPath);
+}
+
+void DataLogger::setFlushIntervalMs(int intervalMs)
+{
+    m_flushIntervalMs = qMax(100, intervalMs);
+    m_flushTimer.setInterval(m_flushIntervalMs);
 }
 
 QString DataLogger::outputDirectory() const
@@ -63,6 +73,7 @@ bool DataLogger::startSession()
     }
 
     emit logMessage(QStringLiteral("Data logging started: %1").arg(m_currentFilePath));
+    m_flushTimer.start(m_flushIntervalMs);
     return true;
 }
 
@@ -73,6 +84,7 @@ void DataLogger::stopSession()
         m_file.close();
         emit logMessage(QStringLiteral("Data logging stopped"));
     }
+    m_flushTimer.stop();
 }
 
 bool DataLogger::logSample(const QVector<double> &values,
@@ -95,8 +107,14 @@ bool DataLogger::logSample(const QVector<double> &values,
            << valueText(2) << ','
            << (alarmActive ? QStringLiteral("1") : QStringLiteral("0")) << ','
            << csvEscape(alarmMessage) << '\n';
-    m_file.flush();
     return true;
+}
+
+void DataLogger::flush()
+{
+    if (m_file.isOpen()) {
+        m_file.flush();
+    }
 }
 
 QString DataLogger::csvEscape(const QString &text)

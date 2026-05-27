@@ -14,6 +14,8 @@ Qt6 Widgets based HMI dashboard prototype for serial/TCP data acquisition, realt
 - Dedicated alarm manager with configurable high limits
 - Alarm acknowledge, silence, and history workflow
 - Runtime settings dialog for IO mode, serial/TCP parameters, alarm limits, logging, and UI limits
+- Throttled UI refresh for high-frequency data streams
+- Timed CSV flushing instead of one disk flush per sample
 - CSV data logging with one file per acquisition session
 - Realtime signal chain:
   - `SerialManager`
@@ -56,6 +58,7 @@ HMI_SerialDashboard/
   configmanager.cpp
   datalogger.h
   datalogger.cpp
+  ARCHITECTURE.md
   scripts/
     generate_autogen.ps1
     build_release.ps1
@@ -171,6 +174,14 @@ Expected output:
 All HMI unit tests passed.
 ```
 
+## Architecture
+
+The module boundaries, threading model, and performance rules are documented in:
+
+```text
+ARCHITECTURE.md
+```
+
 ## Deploy
 
 ```powershell
@@ -242,8 +253,11 @@ alarm.pressureHigh
 alarm.flowHigh
 logging.enabled
 logging.directory
+logging.flushIntervalMs
 ui.maxHistoryRows
 ui.maxChartPoints
+ui.refreshIntervalMs
+ui.maxSamplesPerRefresh
 ```
 
 Use the `Settings` button in the left control panel to edit these values at runtime.
@@ -274,6 +288,8 @@ timestamp,temperature,pressure,flow,alarm_active,alarm_message
 ```
 
 The log directory can be changed in the runtime settings dialog.
+The flush interval can also be changed there. Larger values reduce disk IO;
+smaller values reduce possible data loss if the process exits unexpectedly.
 
 ## Switch To SerialPort
 
