@@ -1,6 +1,8 @@
 #ifndef DATASOURCE_H
 #define DATASOURCE_H
 
+#include "protocolframer.h"
+
 #include <QAbstractSocket>
 #include <QObject>
 #include <QString>
@@ -88,6 +90,7 @@ public:
     explicit TcpSocketDataSource(QObject *parent = nullptr);
 
     void setEndpoint(const QString &host, quint16 port);
+    void setFrameConfig(const ProtocolFrameConfig &config);
 
     bool start() override;
     void stop() override;
@@ -99,7 +102,10 @@ private slots:
     void handleSocketError(QAbstractSocket::SocketError error);
 
 private:
+    QString emitDecodedFrames(const QByteArray &bytes);
+
     QTcpSocket m_socket;
+    ProtocolFramer m_framer;
     QString m_host = QStringLiteral("127.0.0.1");
     quint16 m_port = 502;
 };
@@ -115,6 +121,7 @@ public:
     void setBaudRate(qint32 baudRate);
     void setAutoReconnectEnabled(bool enabled);
     void setReconnectIntervalMs(int intervalMs);
+    void setFrameConfig(const ProtocolFrameConfig &config);
     QStringList availablePortNames() const;
 
     bool start() override;
@@ -136,6 +143,7 @@ private:
     QString resolvedPortName() const;
     bool openConfiguredPort();
     void scheduleReconnect(const QString &reason);
+    QString emitDecodedFrames(const QByteArray &bytes);
 
     QString m_portName = QStringLiteral("COM1");
     qint32 m_baudRate = 9600;
@@ -145,6 +153,7 @@ private:
     QStringList m_lastAvailablePorts;
     QTimer m_reconnectTimer;
     QTimer m_portScanTimer;
+    ProtocolFramer m_framer;
 
 #if HMI_HAS_QT_SERIALPORT
     QSerialPort m_serialPort;

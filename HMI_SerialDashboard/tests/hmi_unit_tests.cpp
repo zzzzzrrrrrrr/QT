@@ -2,6 +2,7 @@
 #include "configmanager.h"
 #include "datalogger.h"
 #include "dataprocessor.h"
+#include "protocolframer.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -59,10 +60,15 @@ int testAlarmManager()
 {
     AlarmManager alarms;
     alarms.setTemperatureHighLimit(30.0);
+    alarms.setPressureHighLimit(95.0);
+    alarms.setFlowLowLimit(5.0);
 
-    AlarmManager::AlarmState state = alarms.evaluate({31.5, 90.0, 10.0});
-    if (!state.active || !state.message.contains(QStringLiteral("Temperature"))) {
-        return fail(QStringLiteral("AlarmManager should raise temperature high alarm."));
+    AlarmManager::AlarmState state = alarms.evaluate({31.5, 100.0, 3.0});
+    if (!state.active
+        || !state.message.contains(QStringLiteral("Temperature"))
+        || !state.message.contains(QStringLiteral("Pressure"))
+        || !state.message.contains(QStringLiteral("Flow"))) {
+        return fail(QStringLiteral("AlarmManager should raise multiple active alarms."));
     }
 
     alarms.acknowledgeCurrentAlarm();
@@ -82,6 +88,44 @@ int testAlarmManager()
 
     if (alarms.history().isEmpty()) {
         return fail(QStringLiteral("AlarmManager should keep alarm history."));
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int testProtocolFramer()
+{
+    ProtocolFramer framer;
+    ProtocolFrameConfig config;
+    config.mode = ProtocolFrameConfig::Mode::Line;
+    framer.setConfig(config);
+
+    if (!framer.ingest(QByteArray("1,2")).isEmpty()) {
+        return fail(QStringLiteral("ProtocolFramer should buffer partial line frames."));
+    }
+
+    QStringList frames = framer.ingest(QByteArray(",3\r\n4,5,6\n"));
+    if (frames.size() != 2
+        || frames.at(0) != QStringLiteral("1,2,3")
+        || frames.at(1) != QStringLiteral("4,5,6")) {
+        return fail(QStringLiteral("ProtocolFramer should split line-delimited frames."));
+    }
+
+    config.mode = ProtocolFrameConfig::Mode::Delimiter;
+    config.delimiter = ProtocolFrameConfig::parseEscapedBytes(QStringLiteral("\\x03"));
+    framer.setConfig(config);
+    frames = framer.ingest(QByteArray("A") + QByteArray(1, char(0x03)) + QByteArray("B"));
+    frames += framer.ingest(QByteArray(1, char(0x03)));
+    if (frames.size() != 2 || frames.at(0) != QStringLiteral("A") || frames.at(1) != QStringLiteral("B")) {
+        return fail(QStringLiteral("ProtocolFramer should split custom-delimited frames."));
+    }
+
+    config.mode = ProtocolFrameConfig::Mode::FixedLength;
+    config.fixedLength = 3;
+    framer.setConfig(config);
+    frames = framer.ingest(QByteArray("abcdefg"));
+    if (frames.size() != 2 || frames.at(0) != QStringLiteral("abc") || frames.at(1) != QStringLiteral("def")) {
+        return fail(QStringLiteral("ProtocolFramer should split fixed-length frames."));
     }
 
     return EXIT_SUCCESS;
@@ -138,6 +182,15 @@ int testDataLogger()
     const QString csvPath = logger.currentFilePath();
     logger.stopSession();
 
+    if (!logger.startSession()) {
+        return fail(QStringLiteral("DataLogger should start a second CSV session."));
+    }
+    const QString secondCsvPath = logger.currentFilePath();
+    logger.stopSession();
+    if (csvPath == secondCsvPath) {
+        return fail(QStringLiteral("DataLogger session file names should be unique."));
+    }
+
     QFile file(csvPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return fail(QStringLiteral("DataLogger output file should exist."));
@@ -162,6 +215,7 @@ int main(int argc, char *argv[])
     const int results[] = {
         testDataProcessor(),
         testAlarmManager(),
+        testProtocolFramer(),
         testConfigManager(),
         testDataLogger()
     };

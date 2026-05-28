@@ -36,6 +36,7 @@ public:
     void setTcpEndpoint(const QString &host, quint16 port);
     void setTcpSimulationEnabled(bool enabled);
     void setSimulationIntervalMs(int intervalMs);
+    void setFrameConfig(const ProtocolFrameConfig &config);
     void setSerialAutoReconnectEnabled(bool enabled);
     void setSerialReconnectIntervalMs(int intervalMs);
     QStringList availableSerialPorts() const;

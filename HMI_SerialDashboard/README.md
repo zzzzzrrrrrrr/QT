@@ -10,10 +10,13 @@ Qt6 Widgets based HMI dashboard prototype for serial/TCP data acquisition, realt
 - Optional Qt6 SerialPort support when the module is installed
 - Optional Qt6 SerialBus support for Modbus RTU/TCP when the module is installed
 - Abstract data-source layer for TCP simulation, TCP socket, and serial input
+- Runtime availability gating for SerialPort/SerialBus dependent modes
+- Shared TCP/serial frame decoder for raw chunks, line frames, custom delimiters, and fixed-length packets
 - Serial port auto-scan, hotplug refresh, and reconnect support
-- Dedicated alarm manager with configurable high limits
-- Alarm acknowledge, silence, and history workflow
-- Runtime settings dialog for IO mode, serial/TCP parameters, alarm limits, logging, and UI limits
+- Dedicated alarm manager with configurable high/low limits, hysteresis, optional latching, and multi-alarm messages
+- Alarm acknowledge, silence, export, clear, and history workflow
+- Runtime settings dialog for IO mode, serial/TCP parameters, protocol framing, processing, alarm limits, logging, and UI limits
+- Configurable worker processing: pass-through, scale/offset calibration, or low-pass filtering
 - Throttled UI refresh for high-frequency data streams
 - Timed CSV flushing instead of one disk flush per sample
 - CSV data logging with one file per acquisition session
@@ -248,9 +251,23 @@ modbus.pollIntervalMs
 modbus.timeoutMs
 simulation.intervalMs
 worker.intervalMs
+worker.processingMode
+worker.scale
+worker.offset
+worker.lowPassAlpha
+protocol.framingMode
+protocol.delimiter
+protocol.fixedLength
+protocol.maxFrameBytes
 alarm.temperatureHigh
+alarm.temperatureLow
 alarm.pressureHigh
+alarm.pressureLow
 alarm.flowHigh
+alarm.flowLow
+alarm.hysteresis
+alarm.latchingEnabled
+alarm.maxHistoryRecords
 logging.enabled
 logging.directory
 logging.flushIntervalMs
@@ -262,6 +279,9 @@ ui.maxSamplesPerRefresh
 
 Use the `Settings` button in the left control panel to edit these values at runtime.
 If acquisition is running, the app stops it before applying the new settings.
+If the current Qt kit does not include Qt SerialPort or Qt SerialBus, the related
+input modes are disabled in the settings dialog and unavailable saved modes fall
+back to TCP simulation.
 
 Supported `io.mode` values:
 
@@ -280,6 +300,9 @@ When CSV logging is enabled, each `Start` action creates one session file under:
 ```text
 data_logs/
 ```
+
+Session file names include millisecond precision and auto-increment on collision,
+so rapid start/stop cycles do not overwrite earlier CSV files.
 
 CSV columns:
 
@@ -428,7 +451,6 @@ data_logs/
 ## Further Work
 
 - Add CSV replay mode for offline debugging.
-- Add live serial protocol framing presets.
+- Add device-specific serial protocol presets.
 - Add Modbus write/register-map editor.
-- Add UI actions for exporting alarm history.
 - Add an installer script with Inno Setup or NSIS.

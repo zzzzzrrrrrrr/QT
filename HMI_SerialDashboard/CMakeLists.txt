@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(HMI_USE_MANUAL_AUTOGEN "Use manually generated uic/moc files for restricted shells." OFF)
+option(HMI_REQUIRE_QT_SERIALPORT "Fail configure when Qt SerialPort is unavailable." OFF)
+option(HMI_REQUIRE_QT_SERIALBUS "Fail configure when Qt SerialBus is unavailable." OFF)
 
 find_package(Qt6 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt6 COMPONENTS Network Xml LinguistTools REQUIRED)
@@ -18,6 +20,8 @@ set(PROJECT_SOURCES
     main.cpp
     mainwindow.cpp
     mainwindow.h
+    protocolframer.cpp
+    protocolframer.h
     datasource.cpp
     datasource.h
     alarmmanager.cpp
@@ -84,6 +88,9 @@ if(Qt6SerialPort_FOUND)
     list(APPEND PROJECT_LIBRARIES Qt6::SerialPort)
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALPORT=1)
 else()
+    if(HMI_REQUIRE_QT_SERIALPORT)
+        message(FATAL_ERROR "Qt6 SerialPort is required but was not found.")
+    endif()
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALPORT=0)
 endif()
 
@@ -91,6 +98,9 @@ if(Qt6SerialBus_FOUND)
     list(APPEND PROJECT_LIBRARIES Qt6::SerialBus)
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALBUS=1)
 else()
+    if(HMI_REQUIRE_QT_SERIALBUS)
+        message(FATAL_ERROR "Qt6 SerialBus is required but was not found.")
+    endif()
     target_compile_definitions(HMI_SerialDashboard PRIVATE HMI_HAS_QT_SERIALBUS=0)
 endif()
 
@@ -116,6 +126,8 @@ add_executable(hmi_unit_tests
     configmanager.h
     datalogger.cpp
     datalogger.h
+    protocolframer.cpp
+    protocolframer.h
     dataprocessor.cpp
     dataprocessor.h
 )

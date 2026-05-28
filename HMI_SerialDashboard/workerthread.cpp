@@ -4,6 +4,7 @@
 #include <QMutexLocker>
 #include <QReadLocker>
 #include <QWriteLocker>
+#include <QtGlobal>
 #include <algorithm>
 
 namespace {
@@ -29,6 +30,40 @@ void WorkerThread::setProcessor(DataProcessor *processor)
 void WorkerThread::setIntervalMs(int intervalMs)
 {
     m_intervalMs = std::max(20, intervalMs);
+}
+
+void WorkerThread::setProcessingMode(ProcessingMode mode)
+{
+    QWriteLocker locker(&m_processingLock);
+    m_processingSettings.mode = mode;
+    if (mode != ProcessingMode::LowPass) {
+        m_lowPassState.clear();
+    }
+}
+
+void WorkerThread::setProcessingMode(const QString &modeName)
+{
+    const QString normalized = modeName.trimmed().toLower();
+    if (normalized == QStringLiteral("scale-offset")) {
+        setProcessingMode(ProcessingMode::ScaleOffset);
+    } else if (normalized == QStringLiteral("low-pass")) {
+        setProcessingMode(ProcessingMode::LowPass);
+    } else {
+        setProcessingMode(ProcessingMode::PassThrough);
+    }
+}
+
+void WorkerThread::setScaleOffset(double scale, double offset)
+{
+    QWriteLocker locker(&m_processingLock);
+    m_processingSettings.scale = scale;
+    m_processingSettings.offset = offset;
+}
+
+void WorkerThread::setLowPassAlpha(double alpha)
+{
+    QWriteLocker locker(&m_processingLock);
+    m_processingSettings.alpha = qBound(0.01, alpha, 1.0);
 }
 
 void WorkerThread::setLatestData(const QVector<double> &values)
@@ -102,14 +137,41 @@ QVector<double> WorkerThread::latestDataSnapshot() const
     return m_processor ? m_processor->getLatestData() : QVector<double> {};
 }
 
-QVector<double> WorkerThread::calculateValues(const QVector<double> &values) const
+QVector<double> WorkerThread::calculateValues(const QVector<double> &values)
 {
+    const ProcessingSettings settings = processingSettings();
+
     QVector<double> processed;
     processed.resize(values.size());
 
     for (qsizetype i = 0; i < values.size(); ++i) {
-        processed[i] = values[i] + m_outputOffset;
+        processed[i] = values[i] * settings.scale + settings.offset;
     }
 
-    return processed;
+    if (settings.mode == ProcessingMode::PassThrough) {
+        return values;
+    }
+
+    if (settings.mode != ProcessingMode::LowPass) {
+        return processed;
+    }
+
+    QWriteLocker locker(&m_processingLock);
+    const double alpha = m_processingSettings.alpha;
+    if (m_lowPassState.size() != processed.size()) {
+        m_lowPassState = processed;
+        return processed;
+    }
+
+    for (qsizetype i = 0; i < processed.size(); ++i) {
+        m_lowPassState[i] = alpha * processed[i] + (1.0 - alpha) * m_lowPassState[i];
+    }
+
+    return m_lowPassState;
+}
+
+WorkerThread::ProcessingSettings WorkerThread::processingSettings() const
+{
+    QReadLocker locker(&m_processingLock);
+    return m_processingSettings;
 }

@@ -122,6 +122,11 @@ void TcpSocketDataSource::setEndpoint(const QString &host, quint16 port)
     m_port = port;
 }
 
+void TcpSocketDataSource::setFrameConfig(const ProtocolFrameConfig &config)
+{
+    m_framer.setConfig(config);
+}
+
 bool TcpSocketDataSource::start()
 {
     stop();
@@ -131,6 +136,7 @@ bool TcpSocketDataSource::start()
         return false;
     }
 
+    m_framer.reset();
     m_socket.connectToHost(m_host, m_port);
     return m_socket.state() == QAbstractSocket::ConnectingState
            || m_socket.state() == QAbstractSocket::ConnectedState;
@@ -152,9 +158,7 @@ QString TcpSocketDataSource::readOnce()
         return {};
     }
 
-    const QString data = QString::fromUtf8(m_socket.readAll());
-    emitIfNotEmpty(data);
-    return data;
+    return emitDecodedFrames(m_socket.readAll());
 }
 
 bool TcpSocketDataSource::isRunning() const
@@ -172,6 +176,15 @@ void TcpSocketDataSource::handleSocketError(QAbstractSocket::SocketError error)
 {
     Q_UNUSED(error)
     emit errorOccurred(m_socket.errorString());
+}
+
+QString TcpSocketDataSource::emitDecodedFrames(const QByteArray &bytes)
+{
+    const QStringList frames = m_framer.ingest(bytes);
+    for (const QString &frame : frames) {
+        emitIfNotEmpty(frame);
+    }
+    return frames.join(QStringLiteral("\n"));
 }
 
 SerialPortDataSource::SerialPortDataSource(QObject *parent)
@@ -221,6 +234,11 @@ void SerialPortDataSource::setReconnectIntervalMs(int intervalMs)
     m_reconnectTimer.setInterval(m_reconnectIntervalMs);
 }
 
+void SerialPortDataSource::setFrameConfig(const ProtocolFrameConfig &config)
+{
+    m_framer.setConfig(config);
+}
+
 QStringList SerialPortDataSource::availablePortNames() const
 {
 #if HMI_HAS_QT_SERIALPORT
@@ -241,6 +259,7 @@ bool SerialPortDataSource::start()
 #if HMI_HAS_QT_SERIALPORT
     m_stopRequested = false;
     m_reconnectTimer.stop();
+    m_framer.reset();
     if (m_serialPort.isOpen()) {
         m_serialPort.close();
     }
@@ -271,9 +290,7 @@ QString SerialPortDataSource::readOnce()
         return {};
     }
 
-    const QString data = QString::fromUtf8(m_serialPort.readAll());
-    emitIfNotEmpty(data);
-    return data;
+    return emitDecodedFrames(m_serialPort.readAll());
 #else
     return {};
 #endif
@@ -393,6 +410,15 @@ void SerialPortDataSource::scheduleReconnect(const QString &reason)
 
     qDebug().noquote() << "[DataSource][Serial] reconnect scheduled:" << reason;
     m_reconnectTimer.start(m_reconnectIntervalMs);
+}
+
+QString SerialPortDataSource::emitDecodedFrames(const QByteArray &bytes)
+{
+    const QStringList frames = m_framer.ingest(bytes);
+    for (const QString &frame : frames) {
+        emitIfNotEmpty(frame);
+    }
+    return frames.join(QStringLiteral("\n"));
 }
 
 ModbusDataSource::ModbusDataSource(Transport transport, QObject *parent)

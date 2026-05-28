@@ -44,6 +44,7 @@ private:
     QFile m_file;
     QTimer m_flushTimer;
     int m_flushIntervalMs = 1000;
+    bool m_reportedWriteError = false;
 };
 
 #endif // DATALOGGER_H

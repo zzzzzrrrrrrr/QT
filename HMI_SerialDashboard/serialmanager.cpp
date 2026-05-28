@@ -78,6 +78,12 @@ void SerialManager::setSimulationIntervalMs(int intervalMs)
     m_tcpSimulationSource.setIntervalMs(intervalMs);
 }
 
+void SerialManager::setFrameConfig(const ProtocolFrameConfig &config)
+{
+    m_tcpSocketSource.setFrameConfig(config);
+    m_serialPortSource.setFrameConfig(config);
+}
+
 void SerialManager::setSerialAutoReconnectEnabled(bool enabled)
 {
     m_serialPortSource.setAutoReconnectEnabled(enabled);

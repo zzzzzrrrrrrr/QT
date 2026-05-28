@@ -61,8 +61,9 @@ bool DataLogger::startSession()
 
     m_currentFilePath = createSessionFilePath();
     m_file.setFileName(m_currentFilePath);
+    m_reportedWriteError = false;
 
-    if (!m_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+    if (!m_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::NewOnly)) {
         emit errorOccurred(QStringLiteral("Unable to open data log file: %1").arg(m_currentFilePath));
         return false;
     }
@@ -107,7 +108,12 @@ bool DataLogger::logSample(const QVector<double> &values,
            << valueText(2) << ','
            << (alarmActive ? QStringLiteral("1") : QStringLiteral("0")) << ','
            << csvEscape(alarmMessage) << '\n';
-    return true;
+    const bool ok = stream.status() == QTextStream::Ok;
+    if (!ok && !m_reportedWriteError) {
+        m_reportedWriteError = true;
+        emit errorOccurred(QStringLiteral("Data log write failed: %1").arg(m_currentFilePath));
+    }
+    return ok;
 }
 
 void DataLogger::flush()
@@ -132,9 +138,17 @@ QString DataLogger::csvEscape(const QString &text)
 
 QString DataLogger::createSessionFilePath() const
 {
-    const QString fileName = QStringLiteral("hmi_samples_%1.csv")
-                                 .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-    return QDir(m_outputDirectory).filePath(fileName);
+    const QDir directory(m_outputDirectory);
+    const QString baseName = QStringLiteral("hmi_samples_%1")
+                                 .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz")));
+
+    QString candidate = directory.filePath(baseName + QStringLiteral(".csv"));
+    int suffix = 1;
+    while (QFile::exists(candidate)) {
+        candidate = directory.filePath(QStringLiteral("%1_%2.csv").arg(baseName).arg(suffix++));
+    }
+
+    return candidate;
 }
 
 bool DataLogger::writeHeader()

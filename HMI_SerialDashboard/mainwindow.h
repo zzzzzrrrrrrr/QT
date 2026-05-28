@@ -48,6 +48,8 @@ private slots:
     void handleSettingsClicked();
     void handleAlarmAcknowledgeClicked();
     void handleAlarmSilenceClicked();
+    void handleAlarmExportClicked();
+    void handleAlarmClearClicked();
     void handleAvailableSerialPortsChanged(const QStringList &ports);
     void handleProcessedData(const QVector<double> &values);
     void handleStatusMessage(const QString &message);
@@ -61,6 +63,8 @@ private:
     void saveConfiguration();
     void applyConfiguration();
     void configureInputSource();
+    bool isInputModeAvailable(const QString &mode) const;
+    QString fallbackInputMode(const QString &mode) const;
     void openSettingsDialog();
     void setupRuntimeUiExtensions();
     void setupChart();
@@ -96,6 +100,8 @@ private:
     QLabel *m_ledIndicator = nullptr;
     QPushButton *m_alarmAckButton = nullptr;
     QPushButton *m_alarmSilenceButton = nullptr;
+    QPushButton *m_alarmExportButton = nullptr;
+    QPushButton *m_alarmClearButton = nullptr;
     bool m_loggingEnabled = true;
     int m_sampleIndex = 0;
     int m_maxHistoryRows = 200;
